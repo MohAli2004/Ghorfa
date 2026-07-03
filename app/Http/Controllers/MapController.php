@@ -6,11 +6,18 @@ use App\Models\Property;
 use App\Models\Amenity;
 use App\Models\Rule;
 use App\Services\GeocodingService;
+use App\Services\PropertyInteractionService;
+use App\Services\SemanticSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
 class MapController extends Controller
 {
+    public function __construct(
+        protected SemanticSearchService $semanticSearchService,
+        protected PropertyInteractionService $interactionService,
+    ) {}
+
     public function index(Request $request)
     {
         $query = Property::with(['images', 'unit', 'amenities', 'reviews'])
@@ -18,13 +25,17 @@ class MapController extends Controller
             ->whereNotNull('latitude')
             ->whereNotNull('longitude');
 
-        // Apply filters if provided
-        if ($request->filled('location')) {
+        $searchText = $this->semanticSearchService->extractQueryFromRequest($request);
+        $useSemantic = $this->semanticSearchService->shouldUseSemanticSearch($request);
+
+        if (!$useSemantic && $request->filled('location')) {
             $location = $request->input('location');
-            $query->where(function($q) use ($location) {
-                $q->where('country', 'like', "%$location%")
-                  ->orWhere('city', 'like', "%$location%")
-                  ->orWhere('address', 'like', "%$location%");
+            $query->where(function ($q) use ($location) {
+                $q->where('country', 'like', "%{$location}%")
+                    ->orWhere('city', 'like', "%{$location}%")
+                    ->orWhere('address', 'like', "%{$location}%")
+                    ->orWhere('title', 'like', "%{$location}%")
+                    ->orWhere('description', 'like', "%{$location}%");
             });
         }
 
@@ -37,14 +48,22 @@ class MapController extends Controller
         }
 
         if ($request->has('property_type')) {
-            $query->whereIn('property_type', (array)$request->input('property_type'));
+            $query->whereIn('property_type', (array) $request->input('property_type'));
         }
 
         if ($request->has('listing_type')) {
-            $query->whereIn('listing_type', (array)$request->input('listing_type'));
+            $query->whereIn('listing_type', (array) $request->input('listing_type'));
+        }
+
+        if ($useSemantic && $searchText) {
+            $result = $this->semanticSearchService->rankProperties($query, $searchText);
+            $query = $result['query'];
         }
 
         $properties = $query->get();
+
+        $this->interactionService->recordSearch($request, $properties->count());
+
         $amenities = Amenity::all();
         $rules = Rule::all();
 

@@ -73,12 +73,14 @@ function ShowFilterToggle() {
     filterToggleBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
-      const form = document.querySelector('.filter-container form');
-      if (form) {
-        clearAllFilters();
-        form.submit();
+
+      // Clear filters and return to plain search (do not wipe then auto-submit silently).
+      if (!window.confirm('Clear all filters and search text?')) {
+        return;
       }
+
+      clearAllFilters();
+      window.location.href = window.location.pathname;
     });
   }
 
@@ -191,6 +193,33 @@ function validatePriceRange() {
   }
 }
 
+function getSearchFiltersForm() {
+  return document.getElementById('search-filters-form');
+}
+
+function setFormSortValue(sortValue) {
+  const form = getSearchFiltersForm();
+  if (!form) {
+    return;
+  }
+
+  let sortInput = form.querySelector('input[name="sort"]');
+
+  if (!sortValue || sortValue === 'recommended') {
+    sortInput?.remove();
+    return;
+  }
+
+  if (!sortInput) {
+    sortInput = document.createElement('input');
+    sortInput.type = 'hidden';
+    sortInput.name = 'sort';
+    form.appendChild(sortInput);
+  }
+
+  sortInput.value = sortValue;
+}
+
 /* =========================
    Server-side sorting
 ========================= */
@@ -198,34 +227,21 @@ function initPropertySort(selectId = 'sort-options') {
   const select = document.getElementById(selectId);
   if (!select) return;
 
-  // Set initial value from URL parameter
   const urlParams = new URLSearchParams(window.location.search);
   const urlSort = urlParams.get('sort');
   if (urlSort) {
-    select.value = urlSort;
+    const normalizedSort = urlSort.replace('price_high', 'price-high').replace('price_low', 'price-low');
+    select.value = normalizedSort;
   }
 
-  // Reload page with sort parameter when changed
   select.addEventListener('change', (e) => {
-    const sortValue = e.target.value;
-    const currentParams = new URLSearchParams(window.location.search);
-    
-    // Update or add sort parameter
-    if (sortValue && sortValue !== 'recommended') {
-      currentParams.set('sort', sortValue);
-    } else {
-      // Remove sort parameter for 'recommended' (default)
-      currentParams.delete('sort');
+    const form = getSearchFiltersForm();
+    if (!form) {
+      return;
     }
-    
-    // Preserve page parameter if exists, otherwise remove it (start from page 1)
-    if (currentParams.has('page')) {
-      currentParams.set('page', '1');
-    }
-    
-    // Reload page with new parameters
-    const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
-    window.location.href = newUrl;
+
+    setFormSortValue(e.target.value);
+    form.submit();
   });
 }
 

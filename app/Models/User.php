@@ -121,6 +121,16 @@ class User extends Authenticatable
         return $this->hasMany(Transaction::class);
     }
 
+    public function propertyInteractions()
+    {
+        return $this->hasMany(PropertyInteraction::class);
+    }
+
+    public function propertySearches()
+    {
+        return $this->hasMany(PropertySearch::class);
+    }
+
     public function isLandlord(): bool
     {
         return $this->role === 'landlord' || $this->isAdmin();

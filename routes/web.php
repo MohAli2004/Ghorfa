@@ -27,6 +27,19 @@ Route::prefix('profile')->middleware('auth')->group(function (): void {
 });
 Route::get('/profile', [MainController::class,"profilePage"])->name('profile');
 Route::get('/search', [PropertyController::class, 'index'])->name('search');
+
+//--------------Recommendation Routes-------------------
+Route::get('/recommendations', [App\Http\Controllers\RecommendationController::class, 'index'])
+    ->name('recommendations.index');
+Route::get('/api/recommendations', [App\Http\Controllers\RecommendationController::class, 'api'])
+    ->name('recommendations.api');
+Route::post('/properties/{property}/track-click', [App\Http\Controllers\RecommendationController::class, 'trackClick'])
+    ->name('properties.track-click')
+    ->middleware('auth');
+Route::post('/properties/{property}/track-contact', [App\Http\Controllers\RecommendationController::class, 'trackContact'])
+    ->name('properties.track-contact')
+    ->middleware('auth');
+
 Route::get('/list-property', [MainController::class, 'propertyPage'])->name('list-property')->middleware(['auth', LandlordMiddleware::class]);
 //--------------Map Routes-------------------
 Route::get('/map', [MapController::class, 'index'])->name('map');

@@ -39,6 +39,13 @@ class Property extends Model
         'approved_by',
         'rejection_reason',
         'resubmit_notes',
+        'views_count',
+        'likes_count',
+    ];
+
+    protected $casts = [
+        'views_count' => 'integer',
+        'likes_count' => 'integer',
     ];
 
     public function amenities()
@@ -93,10 +100,15 @@ class Property extends Model
     }
 
     /**
-     * Get the total number of likes for this property
+     * Get the total number of likes for this property.
+     * Uses denormalized likes_count when available, falls back to pivot count.
      */
     public function getLikesCountAttribute()
     {
+        if (array_key_exists('likes_count', $this->attributes)) {
+            return (int) $this->attributes['likes_count'];
+        }
+
         return $this->likedBy()->count();
     }
 
@@ -104,6 +116,16 @@ class Property extends Model
     public function reviews()
     {
         return $this->hasMany(Review::class);
+    }
+
+    public function interactions()
+    {
+        return $this->hasMany(PropertyInteraction::class);
+    }
+
+    public function embedding()
+    {
+        return $this->hasOne(PropertyEmbedding::class);
     }
 
     /**

@@ -19,7 +19,7 @@
                 <i class="fas fa-times"></i>
             </button>
             <div class="filter-container">
-                <form action="{{ route('filter-search') }}" method="GET">
+                <form id="search-filters-form" action="{{ route('filter-search') }}" method="GET">
                 @if(request('sort'))
                     <input type="hidden" name="sort" value="{{ request('sort') }}">
                 @endif
@@ -27,7 +27,7 @@
                     <h3>Search</h3>
                     <div class="search-input">
                         <i class="fas fa-search"></i>
-                        <input type="text" id="location" name="location" placeholder="Location, title, or description..." value="{{ request('location') }}" autocomplete="off">
+                        <input type="text" id="location" name="location" placeholder="City, neighborhood, or keywords..." value="{{ request('location') }}" autocomplete="off">
                     </div>
                 </div>
 
@@ -98,9 +98,10 @@
                     </div>
                 </div>
 
-                <button class="other-list-btn apply-filters">
+                <button type="submit" class="other-list-btn apply-filters">
                     <i class="fas fa-filter"></i> Apply Filters
                 </button>
+                </form>
             </div>
         </section>
         
@@ -122,8 +123,8 @@
                     <p>in {{ $countriesLabel }}</p>
                 </div>
                 <div class="results-sort">
-                    <button class="filter-toggle-btn">
-                        <i class="fas fa-filter"></i> Toggle
+                    <button type="button" class="filter-toggle-btn" title="Clear all filters">
+                        <i class="fas fa-rotate-left"></i> Clear
                     </button>
                     <select id="sort-options" name="sort">
                         <option value="recommended" {{ request('sort') == 'recommended' || !request('sort') ? 'selected' : '' }}>Recommended</option>
@@ -133,13 +134,12 @@
                         <option value="latest" {{ request('sort') == 'latest' ? 'selected' : '' }}>Latest</option>
                     </select>
                 </div>
-                </div>
+            </div>
 
-            
                 @if($properties->count() > 0)
                 <div class="listings-grid">    
                     @foreach($properties as $property)
-                <div class="listing-card" data-price="{{ $property->price }}" data-created="{{ $property->created_at->timestamp }}" data-likes="{{ $property->likedBy()->count() }}">
+                <div class="listing-card" data-price="{{ $property->price }}" data-created="{{ $property->created_at->timestamp }}" data-likes="{{ $property->likedBy()->count() }}" data-property-id="{{ $property->id }}">
                     <div class="listing-image">
                         <img src="{{ \App\Services\PropertyImageService::getImageUrl($property) }}" alt="{{ $property->title }}">
                         <span class="listing-tag">For {{ $property->listing_type }}</span>
@@ -205,7 +205,7 @@
                         <div class="listing-price">
                             <b>${{ $property->price }}</b>@if(($property->listing_type ?? null) === 'rent')/{{ $property->price_duration ?? 'month' }}@endif
                         </div>                       
-                        <a href="{{ route('properties.show', $property->id) }}" class="view-btn">View Details</a>
+                        <a href="{{ route('properties.show', $property->id) }}" class="view-btn" data-track-click="search_results">View Details</a>
                     </div>
                 </div>
                 @endforeach

@@ -9,6 +9,7 @@ use App\Models\Amenity;
 use App\Models\Listing;
 use App\Models\Property;
 use App\Models\Transaction;
+use App\Services\RecommendationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -16,11 +17,18 @@ use Illuminate\Validation\Rule as ValidationRule;
 
 class MainController extends Controller
 {
+    public function __construct(
+        protected RecommendationService $recommendationService,
+    ) {}
+
     function homePage(){
-        $propertyController = new PropertyController();
-        $popularCities = $propertyController->popularCities(4); 
+        $popularCities = app(PropertyController::class)->popularCities(4);
+
+        $recommendedProperties = $this->recommendationService
+            ->getRecommendations(auth()->user(), [], 8)
+            ->pluck('property');
         
-        return view("home", compact('popularCities'));
+        return view("home", compact('popularCities', 'recommendedProperties'));
     }
 
     function profileInfo()

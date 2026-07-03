@@ -10,6 +10,7 @@
 
 @push('scripts')
 <script src="{{ asset('js/show.js') }}" defer></script>
+<script src="{{ asset('js/recommendations.js') }}" defer></script>
 @endpush
 
 @section('content')
@@ -112,10 +113,10 @@
                         @endif
                         <div class="contact-actions contact-actions--row">
                             @if($ownerPhone)
-                            <a href="tel:{{ preg_replace('/\s+/', '', $ownerPhone) }}" class="contact-btn contact-btn--call">
+                            <a href="tel:{{ preg_replace('/\s+/', '', $ownerPhone) }}" class="contact-btn contact-btn--call" data-track-contact="call" data-property-id="{{ $property->id }}">
                                 Call
                             </a>
-                            <a href="https://wa.me/{{ preg_replace('/\D+/', '', $ownerPhone) }}" class="contact-btn contact-btn--whatsapp" target="_blank" rel="noopener noreferrer">
+                            <a href="https://wa.me/{{ preg_replace('/\D+/', '', $ownerPhone) }}" class="contact-btn contact-btn--whatsapp" target="_blank" rel="noopener noreferrer" data-track-contact="whatsapp" data-property-id="{{ $property->id }}">
                                 WhatsApp
                             </a>
                             @else

@@ -15,107 +15,156 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use App\Services\GeocodingService;
 use App\Services\PropertyImageCompressor;
+use App\Services\PropertyInteractionService;
+use App\Services\RecommendationService;
+use App\Services\SemanticSearchService;
 use App\Traits\CreatesNotifications;
 use App\Traits\LogsActivity;
+use Illuminate\Database\Eloquent\Builder;
 
 class PropertyController extends Controller
 {
     use CreatesNotifications, LogsActivity;
+
+    public function __construct(
+        protected PropertyInteractionService $interactionService,
+        protected RecommendationService $recommendationService,
+        protected SemanticSearchService $semanticSearchService,
+    ) {}
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
-        $query = Property::where('status', 'approved');
-        
-        // Apply sorting (default to 'recommended' to match UI)
-        $sort = $request->input('sort', 'recommended');
-        $query = $this->applySorting($query, $sort);
-        
-        $properties = $query->paginate(12)->withQueryString();
-        $amenities = Amenity::all();
-        $rules = Rule::all();
-        return view('search', compact('properties', 'amenities', 'rules', 'request'));
+        return $this->runPropertySearch($request);
     }
 
     public function filterSearch(Request $request)
-    {   
+    {
+        return $this->runPropertySearch($request);
+    }
+
+    /**
+     * Shared search pipeline: filters → semantic AI ranking or hybrid sort → paginate.
+     */
+    protected function runPropertySearch(Request $request)
+    {
         $amenities = Amenity::all();
         $rules = Rule::all();
-        $query = Property::where('status', 'approved');
+        $query = Property::query()->where('status', 'approved');
 
-        if ($request->filled('location')) {
+        $searchText = $this->semanticSearchService->extractQueryFromRequest($request);
+        $useSemantic = $this->semanticSearchService->shouldUseSemanticSearch($request);
+
+        $this->applySearchFilters($query, $request, skipTextSearch: $useSemantic);
+
+        $sort = $request->input('sort', 'recommended');
+        $context = $this->recommendationService->contextFromRequest($request);
+        if ($useSemantic && $searchText) {
+            $result = $this->semanticSearchService->rankProperties($query, $searchText);
+            $query = $result['query'];
+        } elseif ($sort === 'recommended') {
+            $query = $this->recommendationService->applyRecommendedSort($query, $request->user(), $context);
+        } elseif ($sort !== 'semantic') {
+            $query = $this->applySorting($query, $sort);
+        } else {
+            $query = $this->recommendationService->applyRecommendedSort($query, $request->user(), $context);
+        }
+
+        $properties = $query->paginate(12)->withQueryString();
+
+        $this->interactionService->recordSearch($request, $properties->total());
+
+        return view('search', compact(
+            'properties',
+            'amenities',
+            'rules',
+            'request',
+        ));
+    }
+
+    /**
+     * Apply price/type/amenity filters. Text LIKE is skipped when semantic AI handles the query.
+     */
+    protected function applySearchFilters(Builder $query, Request $request, bool $skipTextSearch = false): void
+    {
+        if (!$skipTextSearch && $request->filled('location')) {
             $location = $request->input('location');
             $query->where(function ($q) use ($location) {
                 $q->where('country', 'like', "%{$location}%")
-                  ->orWhere('city', 'like', "%{$location}%")
-                  ->orWhere('address', 'like', "%{$location}%")
-                  ->orWhere('title', 'like', "%{$location}%")
-                  ->orWhere('description', 'like', "%{$location}%");
+                    ->orWhere('city', 'like', "%{$location}%")
+                    ->orWhere('address', 'like', "%{$location}%")
+                    ->orWhere('title', 'like', "%{$location}%")
+                    ->orWhere('description', 'like', "%{$location}%");
             });
         }
 
         if ($request->filled('min-price')) {
             $query->where('price', '>=', $request->input('min-price'));
         }
+
         if ($request->filled('max-price')) {
             $query->where('price', '<=', $request->input('max-price'));
         }
 
         if ($request->has('property_type')) {
-            $query->whereIn('property_type', (array)$request->input('property_type'));
+            $query->whereIn('property_type', (array) $request->input('property_type'));
         }
 
         if ($request->has('listing_type')) {
-            $query->whereIn('listing_type', (array)$request->input('listing_type'));
+            $query->whereIn('listing_type', (array) $request->input('listing_type'));
         }
 
         if ($request->has('amenities')) {
-            $amenitiesInput = (array)$request->input('amenities');
-            $amenityIds = array_map(function($item) {
-                if (is_array($item)) {
-                    return $item['id'] ?? null;
-                }
-                if (is_string($item) && str_starts_with($item, '{')) {
-                    $decoded = json_decode($item, true);
-                    return $decoded['id'] ?? null;
-                }
-                return $item;
-            }, $amenitiesInput);
-            $amenityIds = array_filter($amenityIds);
+            $amenityIds = $this->normalizeFilterIds((array) $request->input('amenities'));
             if (count($amenityIds) > 0) {
-                $query->whereHas('amenities', function($q) use ($amenityIds) {
+                $query->whereHas('amenities', function ($q) use ($amenityIds) {
                     $q->whereIn('amenities.id', $amenityIds);
                 }, '=', count($amenityIds));
             }
         }
 
         if ($request->has('rules')) {
-            $rulesInput = (array)$request->input('rules');
-            $ruleNames = array_map(function($item) {
-                if (is_array($item)) {
-                    return $item['name'] ?? $item['title'] ?? null;
-                }
-                if (is_string($item) && str_starts_with($item, '{')) {
-                    $decoded = json_decode($item, true);
-                    return $decoded['name'] ?? $decoded['title'] ?? null;
-                }
-                return $item;
-            }, $rulesInput);
-            $ruleNames = array_filter($ruleNames);
+            $ruleNames = $this->normalizeFilterNames((array) $request->input('rules'));
             if (count($ruleNames) > 0) {
-                $query->whereHas('rules', function($q) use ($ruleNames) {
+                $query->whereHas('rules', function ($q) use ($ruleNames) {
                     $q->whereIn('rules.name', $ruleNames);
                 }, '=', count($ruleNames));
             }
         }
+    }
 
-        // Apply sorting (default to 'recommended' to match UI)
-        $sort = $request->input('sort', 'recommended');
-        $query = $this->applySorting($query, $sort);
+    protected function normalizeFilterIds(array $items): array
+    {
+        return array_values(array_filter(array_map(function ($item) {
+            if (is_array($item)) {
+                return $item['id'] ?? null;
+            }
+            if (is_string($item) && str_starts_with($item, '{')) {
+                $decoded = json_decode($item, true);
 
-        $properties = $query->paginate(12)->withQueryString();
-        return view('search', compact('properties', 'request', 'amenities', 'rules'));
+                return $decoded['id'] ?? null;
+            }
+
+            return $item;
+        }, $items)));
+    }
+
+    protected function normalizeFilterNames(array $items): array
+    {
+        return array_values(array_filter(array_map(function ($item) {
+            if (is_array($item)) {
+                return $item['name'] ?? $item['title'] ?? null;
+            }
+            if (is_string($item) && str_starts_with($item, '{')) {
+                $decoded = json_decode($item, true);
+
+                return $decoded['name'] ?? $decoded['title'] ?? null;
+            }
+
+            return $item;
+        }, $items)));
     }
 
     /**
@@ -137,7 +186,7 @@ class PropertyController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Property $property)
+    public function show(Request $request, Property $property)
     {
         // Only show approved properties, unless user is admin or property owner
         if ($property->status !== 'approved') {
@@ -151,6 +200,12 @@ class PropertyController extends Controller
         
         $avgRating = $property->average_rating;
         $reviewsCount = $property->reviews_count;
+
+        if ($requestUser = Auth::user()) {
+            $this->interactionService->recordView($requestUser->id, $property, [
+                'source' => 'property_show',
+            ]);
+        }
         
         return view('show', compact('property', 'avgRating', 'reviewsCount'));
     }
@@ -594,9 +649,11 @@ class PropertyController extends Controller
         if ($property->likedBy()->where('user_id', $user->id)->exists()) {
             $property->likedBy()->detach($user->id);
             $status = 'unliked';
+            $this->interactionService->recordUnlike($user->id, $property);
         } else {
             $property->likedBy()->attach($user->id);
             $status = 'liked';
+            $this->interactionService->recordLike($user->id, $property);
             
             if ($property->user_id !== $user->id && $property->user) {
                 $this->createNotification(
@@ -611,7 +668,7 @@ class PropertyController extends Controller
         
         return response()->json([
             'status' => $status,
-            'count' => $property->likedBy()->count(),
+            'count' => $property->fresh()->likes_count,
         ]);
     }
 
@@ -665,12 +722,17 @@ class PropertyController extends Controller
 
        private function applySorting($query, $sort)
     {
+        $sort = str_replace(['price_high', 'price_low'], ['price-high', 'price-low'], (string) $sort);
+
         switch ($sort) {
             case 'price-low':
                 return $query->orderBy('price', 'asc');
             
             case 'price-high':
                 return $query->orderBy('price', 'desc');
+            
+            case 'semantic':
+                return $query->orderByDesc('created_at');
             
             case 'newest':
                 return $query->orderBy('created_at', 'desc');

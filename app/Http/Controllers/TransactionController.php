@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Transaction;
 use App\Models\Property;
 use App\Services\TransactionWorkflowService;
+use App\Services\PropertyInteractionService;
 use App\Http\Requests\StoreTransactionRequest;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -13,8 +14,10 @@ class TransactionController extends Controller
 {
     protected TransactionWorkflowService $workflowService;
 
-    public function __construct(TransactionWorkflowService $workflowService)
-    {
+    public function __construct(
+        TransactionWorkflowService $workflowService,
+        protected PropertyInteractionService $interactionService,
+    ) {
         $this->workflowService = $workflowService;
     }
 
@@ -39,6 +42,14 @@ class TransactionController extends Controller
                     propertyId: $data['property_id'],
                     notes: $data['notes'] ?? null
                 );
+            }
+
+            $property = Property::find($data['property_id']);
+            if ($property) {
+                $this->interactionService->recordContact(auth()->id(), $property, [
+                    'channel' => 'transaction_request',
+                    'type' => $data['type'],
+                ]);
             }
 
             // If the client expects JSON (AJAX), keep JSON response.

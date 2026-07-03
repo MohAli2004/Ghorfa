@@ -3,6 +3,12 @@
 
 @push('styles')
 <link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/search.css') }}">
+<link rel="stylesheet" href="{{ asset('css/recommendations.css') }}">
+@endpush
+
+@push('scripts')
+<script src="{{ asset('js/recommendations.js') }}" defer></script>
 @endpush
 
 @section('content')
@@ -75,6 +81,14 @@
                 </div>
             </div>
         </section>
+
+        @if(isset($recommendedProperties) && $recommendedProperties->count() > 0)
+            @include('partials.recommended-properties-grid', [
+                'properties' => $recommendedProperties,
+                'title' => 'Recommended For You',
+                'subtitle' => 'Properties you might like.',
+            ])
+        @endif
 
         <section id="how-it-works" class="how-it-works">
             <h2>How It Works</h2>
@@ -197,6 +211,14 @@
                 </div>
             </div>
         </section>
+
+        @if(isset($recommendedProperties) && $recommendedProperties->count() > 0)
+            @include('partials.recommended-properties-grid', [
+                'properties' => $recommendedProperties,
+                'title' => 'Recommended For You',
+                'subtitle' => 'Properties you might like.',
+            ])
+        @endif
 
         <section id="how-it-works" class="how-it-works">
             <h2>How It Works</h2>

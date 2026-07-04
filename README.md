@@ -32,7 +32,7 @@ git clone https://github.com/your-username/ghorfa.git
 
 3. Change directory to access the root folder of the project:
 ```bash
-cd Ghorfa-Project
+cd Ghorfa
 ```
 
 4. copy .env.example to .env and update mysql details

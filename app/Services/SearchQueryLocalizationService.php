@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\FuzzyTextMatcher;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -52,7 +53,7 @@ class SearchQueryLocalizationService
             return [];
         }
 
-        $cacheKey = 'semantic_search.variants.' . md5(mb_strtolower($query));
+        $cacheKey = 'semantic_search.variants.v2.' . md5(mb_strtolower($query));
         $ttl = (int) config('semantic_search.query_cache_ttl', 3600);
 
         return Cache::remember($cacheKey, $ttl, function () use ($query) {
@@ -62,8 +63,20 @@ class SearchQueryLocalizationService
                 $variants[] = $term;
             }
 
-            foreach ($this->aiExpand($query) as $term) {
-                $variants[] = $term;
+            // Fuzzy dictionary pass for typos like بعبلك → بعلبك
+            if (config('semantic_search.fuzzy_match_enabled', true)) {
+                foreach ($this->dictionaryFuzzyExpand($query) as $term) {
+                    $variants[] = $term;
+                }
+            }
+
+            $variants = $this->normalizeVariants($variants);
+
+            // AI fallback when dictionary/fuzzy found few useful variants
+            if (count($variants) < 3 || $this->needsAiTypoExpansion($query, $variants)) {
+                foreach ($this->aiExpand($query) as $term) {
+                    $variants[] = $term;
+                }
             }
 
             return $this->normalizeVariants($variants);
@@ -117,6 +130,61 @@ class SearchQueryLocalizationService
     }
 
     /**
+     * Fuzzy match query to dictionary keys/aliases (handles بعبلك → بعلبك).
+     *
+     * @return list<string>
+     */
+    protected function dictionaryFuzzyExpand(string $query): array
+    {
+        $found = [];
+        $minSimilarity = (float) config('semantic_search.fuzzy_min_similarity', 0.72);
+
+        foreach ($this->locationAliases as $key => $aliases) {
+            $candidates = array_merge([$key], $aliases);
+            $best = 0.0;
+
+            foreach ($candidates as $candidate) {
+                $best = max($best, FuzzyTextMatcher::similarity($query, $candidate));
+            }
+
+            if ($best >= $minSimilarity) {
+                $found[] = $key;
+                $found = array_merge($found, $aliases);
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * True when query looks like a typo (no exact dictionary hit but short location-like text).
+     *
+     * @param  list<string>  $variants
+     */
+    protected function needsAiTypoExpansion(string $query, array $variants): bool
+    {
+        if (count($variants) > 4) {
+            return false;
+        }
+
+        $normalizedQuery = FuzzyTextMatcher::normalize($query);
+
+        foreach ($this->locationAliases as $key => $aliases) {
+            $all = array_merge([$key], $aliases);
+            foreach ($all as $term) {
+                if (FuzzyTextMatcher::normalize($term) === $normalizedQuery) {
+                    return false;
+                }
+                if (mb_strpos(FuzzyTextMatcher::normalize($term), $normalizedQuery) !== false) {
+                    return false;
+                }
+            }
+        }
+
+        return mb_strlen($query) >= 3;
+    }
+
+    /**
      * Optional OpenAI translation / transliteration for queries not in the dictionary.
      *
      * @return list<string>
@@ -145,8 +213,9 @@ class SearchQueryLocalizationService
                             'role' => 'system',
                             'content' => 'You expand Lebanese property search queries across Arabic and English. '
                                 . 'Return JSON: {"variants":["term1","term2"]}. '
-                                . 'Include the original query, Arabic script, English translation, and common Latin transliterations '
-                                . '(e.g. بعلبك → baalbek, baalbak). Only property-relevant terms, no sentences.',
+                                . 'Include the original query, corrected Arabic spelling, English translation, and common Latin transliterations. '
+                                . 'Fix typos and missing letters (e.g. بعلب or بعبلك → بعلبك, baalbek, baalbak). '
+                                . 'Only property-relevant location/place terms, no sentences.',
                         ],
                         ['role' => 'user', 'content' => $query],
                     ],

@@ -47,4 +47,24 @@ return [
 
     'semantic_weight' => (float) env('SEMANTIC_SEARCH_SEMANTIC_WEIGHT', 0.40),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Fuzzy matching (typos / partial Arabic queries e.g. بعلب → بعلبك)
+    |--------------------------------------------------------------------------
+    */
+    'fuzzy_match_enabled' => (bool) env('SEMANTIC_SEARCH_FUZZY', true),
+
+    'fuzzy_min_similarity' => (float) env('SEMANTIC_SEARCH_FUZZY_MIN', 0.72),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Distance sorting — after relevance, nearest properties first
+    |--------------------------------------------------------------------------
+    */
+    'sort_by_distance' => (bool) env('SEMANTIC_SEARCH_SORT_BY_DISTANCE', true),
+
+    'include_nearby_properties' => (bool) env('SEMANTIC_SEARCH_INCLUDE_NEARBY', true),
+
+    'nearby_radius_km' => (float) env('SEMANTIC_SEARCH_NEARBY_RADIUS_KM', 35),
+
 ];

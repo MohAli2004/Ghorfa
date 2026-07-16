@@ -29,8 +29,6 @@ Route::get('/profile', [MainController::class,"profilePage"])->name('profile');
 Route::get('/search', [PropertyController::class, 'index'])->name('search');
 
 //--------------Recommendation Routes-------------------
-Route::get('/recommendations', [App\Http\Controllers\RecommendationController::class, 'index'])
-    ->name('recommendations.index');
 Route::get('/api/recommendations', [App\Http\Controllers\RecommendationController::class, 'api'])
     ->name('recommendations.api');
 Route::post('/properties/{property}/track-click', [App\Http\Controllers\RecommendationController::class, 'trackClick'])

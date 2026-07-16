@@ -52,7 +52,7 @@
                                 $statusLabel = str_replace('_', ' ', ucwords($status, '_'));
                             @endphp
                             <span class="status-badge status-{{ $status }}">{{ $statusLabel }}</span>
-                        </td>0/,
+                        
                         <td>{{ $tx->created_at->format('M j, Y') }}</td>
                         <td class="my-requests-table__actions">
                             <a href="{{ route('transactions.show', $tx) }}" class="view-report-btn" aria-label="View report">

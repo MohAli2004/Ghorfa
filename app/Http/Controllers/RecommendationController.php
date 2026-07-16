@@ -16,21 +16,6 @@ class RecommendationController extends Controller
     ) {}
 
     /**
-     * Dedicated page showing personalized property recommendations.
-     */
-    public function index(Request $request)
-    {
-        $context = $this->recommendationService->contextFromRequest($request);
-        $recommendations = $this->recommendationService->getRecommendations(
-            $request->user(),
-            $context,
-            (int) $request->input('limit', 12)
-        );
-
-        return view('recommendations.index', compact('recommendations', 'context'));
-    }
-
-    /**
      * JSON endpoint for AJAX recommendation widgets.
      */
     public function api(Request $request): JsonResponse

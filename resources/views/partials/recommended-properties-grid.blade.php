@@ -11,7 +11,7 @@
             @endif
         </div>
         @if(empty($hideViewAll))
-            <a href="{{ route('recommendations.index') }}" class="recommended-view-all">View all</a>
+            <a href="{{ route('search', ['sort' => 'recommended']) }}" class="recommended-view-all">View all</a>
         @endif
     </div>
 

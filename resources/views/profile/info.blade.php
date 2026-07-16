@@ -64,6 +64,11 @@
                     @if(session('success'))
                         <div class="alert-success-modern" role="status">{{ session('success') }}</div>
                     @endif
+                    @if($errors->any())
+                        <div class="alert-error-modern" role="alert">
+                            Please fix the errors below and try again.
+                        </div>
+                    @endif
 
                     {{-- Prepare values --}}
                     @php

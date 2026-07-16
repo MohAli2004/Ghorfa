@@ -1324,6 +1324,15 @@ main.profile-main-content {
     border-left: 4px solid #10b981;
 }
 
+.alert-error-modern {
+    margin: 1.5rem 2rem;
+    padding: 1rem;
+    background: #fee2e2;
+    color: #991b1b;
+    border-radius: 8px;
+    border-left: 4px solid #ef4444;
+}
+
 /* Form Styles */
 .profile-form-modern {
     padding: 0 2rem 2rem 2rem;

@@ -155,23 +155,228 @@ document.addEventListener('keydown', function(event) {
     }
 });
 
-// Contact button functionality
+// Legacy primary/secondary contact buttons (placeholder modals)
 function initContactButtons() {
-    const contactBtns = document.querySelectorAll('.contact-btn');
-    
-    contactBtns.forEach(btn => {
-        btn.addEventListener('click', function(e) {
+    document.querySelectorAll('.contact-btn.primary, .contact-btn.secondary').forEach((btn) => {
+        btn.addEventListener('click', function (e) {
             e.preventDefault();
-            
+
             if (this.classList.contains('primary')) {
-                // Call Now functionality
                 showContactModal('call');
             } else if (this.classList.contains('secondary')) {
-                // Send Message functionality
                 showContactModal('message');
             }
         });
     });
+}
+
+function initOwnerContactButtons() {
+    const root = document.querySelector('[data-contact-root]');
+    if (!root) {
+        return;
+    }
+
+    const feedback = document.getElementById('contact-feedback');
+    const phone = (root.dataset.ownerPhone || '').replace(/\D+/g, '');
+    const propertyId = root.dataset.propertyId || '';
+    const isAuthenticated = root.dataset.authenticated === 'true';
+    const loginUrl = root.dataset.loginUrl || '/login';
+
+    const showFeedback = (message, type = 'info', html = false) => {
+        if (!feedback) {
+            return;
+        }
+
+        feedback.hidden = false;
+        feedback.className = `contact-feedback contact-feedback--${type}`;
+
+        if (html) {
+            feedback.innerHTML = message;
+        } else {
+            feedback.textContent = message;
+        }
+    };
+
+    const clearFeedback = () => {
+        if (!feedback) {
+            return;
+        }
+
+        feedback.hidden = true;
+        feedback.textContent = '';
+        feedback.innerHTML = '';
+    };
+
+    const trackContact = (channel) => {
+        if (!propertyId) {
+            return;
+        }
+
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (!csrf) {
+            return;
+        }
+
+        fetch(`/properties/${propertyId}/track-contact`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf,
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({ channel }),
+        }).catch(() => {});
+    };
+
+    const isMobileDevice = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+    const formatPhoneDisplay = (digits) => {
+        if (!digits) {
+            return '';
+        }
+
+        if (digits.startsWith('961') && digits.length >= 10) {
+            const local = digits.slice(3);
+            return `+961 ${local.slice(0, 2)} ${local.slice(2)}`;
+        }
+
+        return `+${digits}`;
+    };
+
+    const copyPhoneNumber = async (digits) => {
+        const display = formatPhoneDisplay(digits);
+
+        try {
+            await navigator.clipboard.writeText(display);
+            showFeedback('Phone number copied to clipboard.', 'success');
+        } catch (error) {
+            showFeedback(`Phone number: ${display}`, 'info');
+        }
+    };
+
+    const requireAuth = () => {
+        if (isAuthenticated) {
+            return true;
+        }
+
+        showFeedback('You must be logged in to contact the owner.', 'error', true);
+
+        const loginLink = document.createElement('a');
+        loginLink.href = loginUrl;
+        loginLink.className = 'contact-feedback__action contact-feedback__action--link';
+        loginLink.textContent = 'Log in';
+
+        const actions = document.createElement('span');
+        actions.className = 'contact-feedback__actions';
+        actions.append(loginLink);
+        feedback?.appendChild(actions);
+
+        return false;
+    };
+
+    const handleCall = () => {
+        clearFeedback();
+
+        if (!requireAuth()) {
+            return;
+        }
+
+        if (!phone) {
+            showFeedback('No contact number is available for this owner.', 'error');
+            return;
+        }
+
+        trackContact('call');
+
+        if (isMobileDevice()) {
+            window.location.href = `tel:+${phone}`;
+            return;
+        }
+
+        const display = formatPhoneDisplay(phone);
+        showFeedback(
+            `This device cannot place phone calls directly. Use your phone to call <strong>${display}</strong>.`,
+            'info',
+            true
+        );
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'contact-feedback__action';
+        copyBtn.textContent = 'Copy number';
+        copyBtn.addEventListener('click', () => copyPhoneNumber(phone));
+
+        const tryCallLink = document.createElement('a');
+        tryCallLink.href = `tel:+${phone}`;
+        tryCallLink.className = 'contact-feedback__action contact-feedback__action--link';
+        tryCallLink.textContent = 'Try anyway';
+
+        const actions = document.createElement('span');
+        actions.className = 'contact-feedback__actions';
+        actions.append(copyBtn, tryCallLink);
+        feedback?.appendChild(actions);
+    };
+
+    const handleWhatsApp = () => {
+        clearFeedback();
+
+        if (!requireAuth()) {
+            return;
+        }
+
+        if (!phone) {
+            showFeedback('No contact number is available for this owner.', 'error');
+            return;
+        }
+
+        trackContact('whatsapp');
+
+        const message = `Hi, I am interested in your property on Ghorfa (ID: #${propertyId}).`;
+        const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const downloadUrl = isAndroid
+            ? 'https://play.google.com/store/apps/details?id=com.whatsapp'
+            : isIos
+              ? 'https://apps.apple.com/app/whatsapp-messenger/id310633997'
+              : 'https://www.whatsapp.com/download';
+        const webUrl = `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+
+        const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
+
+        if (!opened) {
+            window.location.href = waUrl;
+        }
+
+        const installLabel = isMobileDevice()
+            ? "If WhatsApp didn't open, install it or use WhatsApp Web."
+            : "If nothing opened, use WhatsApp Web or install WhatsApp on your device.";
+
+        showFeedback(installLabel, 'info', true);
+
+        const actions = document.createElement('span');
+        actions.className = 'contact-feedback__actions';
+
+        const webLink = document.createElement('a');
+        webLink.href = webUrl;
+        webLink.target = '_blank';
+        webLink.rel = 'noopener noreferrer';
+        webLink.className = 'contact-feedback__action contact-feedback__action--link';
+        webLink.textContent = 'Open WhatsApp Web';
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = downloadUrl;
+        downloadLink.target = '_blank';
+        downloadLink.rel = 'noopener noreferrer';
+        downloadLink.className = 'contact-feedback__action contact-feedback__action--link';
+        downloadLink.textContent = 'Download WhatsApp';
+
+        actions.append(webLink, downloadLink);
+        feedback?.appendChild(actions);
+    };
+
+    root.querySelector('[data-contact-action="call"]')?.addEventListener('click', handleCall);
+    root.querySelector('[data-contact-action="whatsapp"]')?.addEventListener('click', handleWhatsApp);
 }
 
 // Show contact modal (placeholder for future implementation)
@@ -364,6 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.initLikeButtons();
     }
     initContactButtons();
+    initOwnerContactButtons();
     initBackButton();
     initGallerySlider();
     initActionButtons();

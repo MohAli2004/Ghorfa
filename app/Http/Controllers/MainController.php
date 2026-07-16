@@ -53,7 +53,6 @@ class MainController extends Controller
         $validated = $request->validate([
             'first_name' => ['required','string','max:255'],
             'last_name' => ['required','string','max:255'],
-            'email' => ['required','string','email','max:255', ValidationRule::unique('users')->ignore($user->id)],
             'phone_nb' => ['required','string','max:30', ValidationRule::unique('users')->ignore($user->id)],
             'date_of_birth' => ['nullable','date','before:today'],
             'address' => ['nullable','string'],

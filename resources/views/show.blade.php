@@ -97,6 +97,10 @@
                         $owner = $property->landlord;
                         $ownerInitial = $owner ? mb_strtoupper(mb_substr($owner->name, 0, 1)) : '?';
                         $ownerPhone = $owner?->phone_nb;
+                        $ownerPhoneDigits = $ownerPhone ? preg_replace('/\D+/', '', $ownerPhone) : '';
+                        if ($ownerPhoneDigits !== '' && str_starts_with($ownerPhoneDigits, '0')) {
+                            $ownerPhoneDigits = '961' . substr($ownerPhoneDigits, 1);
+                        }
                     @endphp
                     <div class="contact-card">
                         <div class="contact-header">
@@ -111,23 +115,39 @@
                             </div>
                         </div>
                         @endif
-                        <div class="contact-actions contact-actions--row">
-                            @if($ownerPhone)
-                            <a href="tel:{{ preg_replace('/\s+/', '', $ownerPhone) }}" class="contact-btn contact-btn--call" data-track-contact="call" data-property-id="{{ $property->id }}">
-                                Call
-                            </a>
-                            <a href="https://wa.me/{{ preg_replace('/\D+/', '', $ownerPhone) }}" class="contact-btn contact-btn--whatsapp" target="_blank" rel="noopener noreferrer" data-track-contact="whatsapp" data-property-id="{{ $property->id }}">
-                                WhatsApp
-                            </a>
-                            @else
-                            <button type="button" class="contact-btn contact-btn--call" disabled>
-                                Call
+                        <div
+                            class="contact-actions contact-actions--row"
+                            data-contact-root
+                            data-property-id="{{ $property->id }}"
+                            data-authenticated="{{ auth()->check() ? 'true' : 'false' }}"
+                            data-login-url="{{ route('login') }}"
+                            @auth
+                                @if($ownerPhoneDigits !== '') data-owner-phone="{{ $ownerPhoneDigits }}" @endif
+                            @endauth
+                        >
+                            <button
+                                type="button"
+                                class="contact-btn contact-btn--call"
+                                data-contact-action="call"
+                                @guest aria-disabled="true" @endguest
+                                @auth @if($ownerPhoneDigits === '') aria-disabled="true" @endif @endauth
+                            >
+                                <i class="fas fa-phone" aria-hidden="true"></i> Call
                             </button>
-                            <button type="button" class="contact-btn contact-btn--whatsapp" disabled>
-                                WhatsApp
+                            <button
+                                type="button"
+                                class="contact-btn contact-btn--whatsapp"
+                                data-contact-action="whatsapp"
+                                @guest aria-disabled="true" @endguest
+                                @auth @if($ownerPhoneDigits === '') aria-disabled="true" @endif @endauth
+                            >
+                                <i class="fab fa-whatsapp" aria-hidden="true"></i> WhatsApp
                             </button>
-                            @endif
                         </div>
+                        @guest
+                            <p class="contact-guest-note">Log in to call or message the owner.</p>
+                        @endguest
+                        <p class="contact-feedback" id="contact-feedback" role="status" aria-live="polite" hidden></p>
                         <div class="property-meta">
                             <div class="meta-item">
                                 <i class="fas fa-calendar"></i>

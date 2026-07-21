@@ -277,21 +277,21 @@
 
             <div class="price-breakdown rent-only-block{{ old('listing_type') === 'sale' ? ' is-hidden' : '' }}" id="rent-price-breakdown">
               <div class="price-breakdown-title">💰 Calculated prices</div>
-              <small style="display: block; margin-bottom: 12px; color: #6b7280;">These prices are auto-calculated from your main price, but you can edit each one individually if needed.</small>
+              <small style="display: block; margin-bottom: 12px; color: #6b7280;">Only checked duration units stay available for renters. Unchecked units are hidden and set to 0 (not accepted).</small>
               <div class="price-breakdown-grid">
-                <div class="price-breakdown-item">
+                <div class="price-breakdown-item" data-rent-unit="day">
                   <label for="price_per_day">Per day</label>
                   <input type="number" id="price_per_day" name="price_per_day" value="{{ old('price_per_day') }}" step="0.01" min="0" placeholder="Auto-calculated">
                 </div>
-                <div class="price-breakdown-item">
+                <div class="price-breakdown-item" data-rent-unit="week">
                   <label for="price_per_week">Per week</label>
                   <input type="number" id="price_per_week" name="price_per_week" value="{{ old('price_per_week') }}" step="0.01" min="0" placeholder="Auto-calculated">
                 </div>
-                <div class="price-breakdown-item">
+                <div class="price-breakdown-item" data-rent-unit="month">
                   <label for="price_per_month">Per month</label>
                   <input type="number" id="price_per_month" name="price_per_month" value="{{ old('price_per_month') }}" step="0.01" min="0" placeholder="Auto-calculated">
                 </div>
-                <div class="price-breakdown-item">
+                <div class="price-breakdown-item" data-rent-unit="year">
                   <label for="price_per_year">Per year</label>
                   <input type="number" id="price_per_year" name="price_per_year" value="{{ old('price_per_year') }}" step="0.01" min="0" placeholder="Auto-calculated">
                 </div>

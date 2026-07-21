@@ -690,6 +690,16 @@ function initPropertyShowMap() {
         return ['year', 'month', 'week', 'day'];
     }
 
+    function getAllowedRentalUnits(box) {
+        try {
+            var parsed = JSON.parse(box.getAttribute('data-allowed-units') || '[]');
+            if (Array.isArray(parsed) && parsed.length) {
+                return parsed;
+            }
+        } catch (e) {}
+        return rentalUnitsFromPrimary(box.getAttribute('data-primary-unit') || 'month');
+    }
+
     function addCalendarUnit(date, unit) {
         var next = new Date(date.getTime());
         if (unit === 'year') next.setFullYear(next.getFullYear() + 1);
@@ -712,13 +722,12 @@ function initPropertyShowMap() {
                 counts[unit] += 1;
             }
         });
+        var leftoverDays = Math.max(0, Math.round((endDay - cursor) / 86400000));
         if (allowed.indexOf('day') !== -1) {
-            counts.day = Math.max(0, Math.round((endDay - cursor) / 86400000));
+            counts.day = leftoverDays;
+            leftoverDays = 0;
         }
-        if (counts.year + counts.month + counts.week + counts.day === 0) {
-            counts.day = Math.max(0, Math.round((endDay - start) / 86400000));
-        }
-        return counts;
+        return { counts: counts, leftoverDays: leftoverDays };
     }
 
     function formatMoney(amount) {
@@ -741,15 +750,25 @@ function initPropertyShowMap() {
 
         var start = new Date(startInput.value + 'T00:00:00');
         var end = new Date(endInput.value + 'T00:00:00');
-        var primary = box.getAttribute('data-primary-unit') || 'month';
+        var allowed = getAllowedRentalUnits(box);
         var rates = {
             day: parseFloat(box.getAttribute('data-rate-day') || '0'),
             week: parseFloat(box.getAttribute('data-rate-week') || '0'),
             month: parseFloat(box.getAttribute('data-rate-month') || '0'),
             year: parseFloat(box.getAttribute('data-rate-year') || '0')
         };
-        var counts = decomposeRentalStay(start, end, rentalUnitsFromPrimary(primary));
+        var decomposed = decomposeRentalStay(start, end, allowed);
+        var counts = decomposed.counts;
         var nights = Math.round((end - start) / 86400000);
+
+        if (decomposed.leftoverDays > 0) {
+            totalEl.textContent = '—';
+            periodEl.textContent = 'These dates do not fit accepted durations (' + allowed.join(', ') + ').';
+            linesEl.innerHTML = '';
+            box.hidden = false;
+            return;
+        }
+
         var total = 0;
         var lines = [];
         var periodParts = [];
@@ -812,6 +831,22 @@ function initPropertyShowMap() {
             if (endDate.value <= startDate.value) {
                 alert('Check-out date must be after check-in date.');
                 return;
+            }
+
+            var estimateBox = document.getElementById('rentalPriceEstimate');
+            if (estimateBox) {
+                var allowed = getAllowedRentalUnits(estimateBox);
+                var start = new Date(startDate.value + 'T00:00:00');
+                var end = new Date(endDate.value + 'T00:00:00');
+                var decomposed = decomposeRentalStay(start, end, allowed);
+                if (decomposed.leftoverDays > 0) {
+                    alert(
+                        'These dates do not fit the landlord\'s accepted rent durations (' +
+                        allowed.join(', ') +
+                        '). Please choose dates that match whole accepted units only.'
+                    );
+                    return;
+                }
             }
         }
         var rulesAccepted = document.getElementById('rules_accepted');
@@ -924,11 +959,14 @@ function initPropertyShowMap() {
                 </div>
 
                 @php
-                    $rentalRates = app(\App\Services\RentalPriceCalculator::class)->ratesFor($property);
+                    $rentalCalculator = app(\App\Services\RentalPriceCalculator::class);
+                    $rentalRates = $rentalCalculator->ratesFor($property);
+                    $rentalAllowedUnits = $rentalCalculator->acceptedUnits($property);
                     $rentalPrimaryUnit = $property->price_duration ?? 'month';
                 @endphp
                 <div class="trxn-price-estimate" id="rentalPriceEstimate" hidden
                     data-primary-unit="{{ $rentalPrimaryUnit }}"
+                    data-allowed-units='@json($rentalAllowedUnits)'
                     data-rate-day="{{ $rentalRates['day'] }}"
                     data-rate-week="{{ $rentalRates['week'] }}"
                     data-rate-month="{{ $rentalRates['month'] }}"
@@ -942,6 +980,10 @@ function initPropertyShowMap() {
                     </div>
                     <p class="trxn-price-estimate__period" id="rentalPricePeriod"></p>
                     <ul class="trxn-price-estimate__lines" id="rentalPriceLines"></ul>
+                    <p class="trxn-price-estimate__hint">
+                        Accepted durations:
+                        {{ implode(', ', $rentalAllowedUnits) }}
+                    </p>
                 </div>
 
                 <div class="trxn-field">

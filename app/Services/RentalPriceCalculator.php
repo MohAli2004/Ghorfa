@@ -7,13 +7,10 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
 /**
- * Calculates rental totals from a stay length using price_per_* rates.
+ * Calculates rental totals from a stay length using accepted price_per_* rates.
  *
- * Breakdown starts from the listing's primary unit (price_duration):
- * - day  → days only
- * - week → weeks + leftover days
- * - month → months + weeks + leftover days
- * - year → years + months + weeks + leftover days
+ * Only units checked in rent_duration_units are used.
+ * Example: if days/weeks are unchecked, stays must fit months/years exactly.
  */
 class RentalPriceCalculator
 {
@@ -24,6 +21,7 @@ class RentalPriceCalculator
      *   nights: int,
      *   total: float,
      *   primary_unit: string,
+     *   allowed_units: list<string>,
      *   rates: array{day: float, week: float, month: float, year: float},
      *   units: array<string, array{count: int, rate: float, subtotal: float}>,
      *   label: string
@@ -39,18 +37,32 @@ class RentalPriceCalculator
         }
 
         $nights = (int) $start->diffInDays($end);
+        $allowed = $this->acceptedUnits($property);
         $rates = $this->ratesFor($property);
         $primary = $this->normalizeUnit($property->price_duration ?? 'month');
-        $allowed = $this->unitsFromPrimary($primary);
 
-        $counts = $this->decomposeStay($start, $end, $allowed);
+        $decomposition = $this->decomposeStayWithRemainder($start, $end, $allowed);
+        $counts = $decomposition['counts'];
+        $leftoverDays = $decomposition['leftover_days'];
+
+        if ($leftoverDays > 0) {
+            $labels = implode(', ', $allowed);
+            throw new \InvalidArgumentException(
+                "This stay does not fit the landlord's accepted rent durations ({$labels}). "
+                . 'Please choose check-in/check-out dates that match whole accepted units only.'
+            );
+        }
+
+        if (array_sum($counts) === 0) {
+            throw new \InvalidArgumentException('Unable to calculate rental price for the selected dates.');
+        }
 
         $units = [];
         $total = 0.0;
 
         foreach (self::UNIT_ORDER as $unit) {
             $count = (int) ($counts[$unit] ?? 0);
-            $rate = (float) ($rates[$unit] ?? 0);
+            $rate = in_array($unit, $allowed, true) ? (float) ($rates[$unit] ?? 0) : 0.0;
             $subtotal = round($count * $rate, 2);
             $units[$unit] = [
                 'count' => $count,
@@ -66,6 +78,7 @@ class RentalPriceCalculator
             'nights' => $nights,
             'total' => $total,
             'primary_unit' => $primary,
+            'allowed_units' => $allowed,
             'rates' => $rates,
             'units' => $units,
             'label' => $this->formatLabel($units),
@@ -73,9 +86,63 @@ class RentalPriceCalculator
     }
 
     /**
+     * @return list<string>
+     */
+    public function acceptedUnits(Property $property): array
+    {
+        $raw = $property->rent_duration_units;
+        $units = [];
+
+        if (is_array($raw)) {
+            $units = $raw;
+        } elseif (is_string($raw) && trim($raw) !== '') {
+            $units = array_filter(array_map('trim', explode(',', $raw)));
+        }
+
+        $units = array_values(array_intersect(self::UNIT_ORDER, array_map(
+            fn ($unit) => $this->normalizeUnit((string) $unit),
+            $units
+        )));
+
+        // Legacy fallback: if nothing stored, derive from primary duration.
+        if ($units === []) {
+            $units = $this->unitsFromPrimary($property->price_duration ?? 'month');
+        }
+
+        // Drop units that are explicitly zeroed (not accepted).
+        $rates = $this->rawRatesFor($property);
+        $units = array_values(array_filter(
+            $units,
+            fn (string $unit) => ($rates[$unit] ?? 0) > 0 || $unit === $this->normalizeUnit($property->price_duration ?? 'month')
+        ));
+
+        if ($units === []) {
+            $units = [$this->normalizeUnit($property->price_duration ?? 'month')];
+        }
+
+        return $units;
+    }
+
+    /**
      * @return array{day: float, week: float, month: float, year: float}
      */
     public function ratesFor(Property $property): array
+    {
+        $raw = $this->rawRatesFor($property);
+        $allowed = $this->acceptedUnits($property);
+
+        return [
+            'day' => in_array('day', $allowed, true) ? $raw['day'] : 0.0,
+            'week' => in_array('week', $allowed, true) ? $raw['week'] : 0.0,
+            'month' => in_array('month', $allowed, true) ? $raw['month'] : 0.0,
+            'year' => in_array('year', $allowed, true) ? $raw['year'] : 0.0,
+        ];
+    }
+
+    /**
+     * @return array{day: float, week: float, month: float, year: float}
+     */
+    protected function rawRatesFor(Property $property): array
     {
         $dayFactors = ['day' => 1, 'week' => 7, 'month' => 30, 'year' => 365];
         $baseUnit = $this->normalizeUnit($property->price_duration ?? 'month');
@@ -93,9 +160,9 @@ class RentalPriceCalculator
 
     /**
      * @param  list<string>  $allowed
-     * @return array{year: int, month: int, week: int, day: int}
+     * @return array{counts: array{year: int, month: int, week: int, day: int}, leftover_days: int}
      */
-    public function decomposeStay(CarbonInterface $start, CarbonInterface $end, array $allowed): array
+    public function decomposeStayWithRemainder(CarbonInterface $start, CarbonInterface $end, array $allowed): array
     {
         $counts = ['year' => 0, 'month' => 0, 'week' => 0, 'day' => 0];
         $cursor = $start->copy()->startOfDay();
@@ -123,16 +190,26 @@ class RentalPriceCalculator
             }
         }
 
+        $leftoverDays = max(0, (int) $cursor->diffInDays($endDay));
+
         if (in_array('day', $allowed, true)) {
-            $counts['day'] = max(0, (int) $cursor->diffInDays($endDay));
+            $counts['day'] = $leftoverDays;
+            $leftoverDays = 0;
         }
 
-        // Safety: if nothing was counted (e.g. odd config), charge remaining nights as days.
-        if (array_sum($counts) === 0) {
-            $counts['day'] = max(0, (int) $start->diffInDays($end));
-        }
+        return [
+            'counts' => $counts,
+            'leftover_days' => $leftoverDays,
+        ];
+    }
 
-        return $counts;
+    /**
+     * @param  list<string>  $allowed
+     * @return array{year: int, month: int, week: int, day: int}
+     */
+    public function decomposeStay(CarbonInterface $start, CarbonInterface $end, array $allowed): array
+    {
+        return $this->decomposeStayWithRemainder($start, $end, $allowed)['counts'];
     }
 
     /**

@@ -2396,6 +2396,12 @@ html {
     font-weight: 600;
 }
 
+.trxn-price-estimate__hint {
+    margin: 0.65rem 0 0;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
 /* Footer */
 .trxn-modal__footer {
     display: flex;

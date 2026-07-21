@@ -1207,6 +1207,10 @@ function validatePropertyLocation() {
         ? 'e.g. 750 (monthly)'
         : 'e.g. 145000 (total sale price)';
     }
+
+    if (isRent) {
+      syncAcceptedRentUnitPrices();
+    }
   }
 
   function initListingTypeRentToggle() {
@@ -1217,6 +1221,78 @@ function validatePropertyLocation() {
 
     listingType.addEventListener('change', syncRentOnlyFields);
     syncRentOnlyFields();
+  }
+
+  function getAcceptedRentUnits() {
+    return Array.from(document.querySelectorAll('input[name="rent_duration_units[]"]:checked'))
+      .map((checkbox) => checkbox.value);
+  }
+
+  function ensurePrimaryRentUnitChecked() {
+    const durationSelect = document.getElementById('price_duration');
+    if (!durationSelect?.value) {
+      return;
+    }
+
+    const primaryCheckbox = document.querySelector(
+      `input[name="rent_duration_units[]"][value="${durationSelect.value}"]`
+    );
+    if (primaryCheckbox && !primaryCheckbox.checked) {
+      primaryCheckbox.checked = true;
+    }
+  }
+
+  function syncAcceptedRentUnitPrices(options = {}) {
+    const { recalcValues = true } = options;
+    if (!isRentListing()) {
+      return;
+    }
+
+    ensurePrimaryRentUnitChecked();
+
+    const accepted = new Set(getAcceptedRentUnits());
+    const priceInput = document.getElementById('price');
+    const durationSelect = document.getElementById('price_duration');
+    const DAYS = { day: 1, week: 7, month: 30, year: 365 };
+    const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+    let computed = null;
+    if (recalcValues && priceInput && durationSelect) {
+      const raw = String(priceInput.value ?? '').trim();
+      const base = parseFloat(raw);
+      const unit = durationSelect.value;
+      if (raw && !Number.isNaN(base) && base >= 0 && DAYS[unit]) {
+        const perDayValue = base / DAYS[unit];
+        computed = {
+          day: round2(perDayValue),
+          week: round2(perDayValue * 7),
+          month: round2(perDayValue * 30),
+          year: round2(perDayValue * 365),
+        };
+      }
+    }
+
+    ['day', 'week', 'month', 'year'].forEach((unit) => {
+      const item = document.querySelector(`.price-breakdown-item[data-rent-unit="${unit}"]`);
+      const input = document.getElementById(`price_per_${unit}`);
+      if (!item || !input) {
+        return;
+      }
+
+      const isAccepted = accepted.has(unit);
+      item.classList.toggle('is-hidden', !isAccepted);
+
+      if (!isAccepted) {
+        input.value = '0';
+        input.dataset.rejectedUnit = '1';
+        return;
+      }
+
+      input.dataset.rejectedUnit = '0';
+      if (computed) {
+        input.value = computed[unit];
+      }
+    });
   }
 
   /* ============================ Price Auto-Calculation ============================ */
@@ -1230,45 +1306,55 @@ function validatePropertyLocation() {
 
     if (!priceInput || !durationSelect || !perDay || !perWeek || !perMonth || !perYear) return;
 
-    const DAYS = { day: 1, week: 7, month: 30, year: 365 };
-
-    const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-
     function recalc() {
       if (!isRentListing()) {
         return;
       }
-
-      const raw = String(priceInput.value ?? '').trim();
-      const base = parseFloat(raw);
-      const unit = durationSelect.value;
-
-      if (!raw || Number.isNaN(base) || base < 0 || !DAYS[unit]) {
-        // Don't clear if user is manually editing
-        return;
-      }
-
-      const perDayValue = base / DAYS[unit];
-      perDay.value = round2(perDayValue);
-      perWeek.value = round2(perDayValue * 7);
-      perMonth.value = round2(perDayValue * 30);
-      perYear.value = round2(perDayValue * 365);
+      syncAcceptedRentUnitPrices({ recalcValues: true });
     }
 
-    // Only recalculate when main price or duration changes
     priceInput.addEventListener('input', recalc);
-    durationSelect.addEventListener('change', recalc);
-    
-    // Initial calculation on page load
-    recalc();
-    
+    durationSelect.addEventListener('change', () => {
+      ensurePrimaryRentUnitChecked();
+      recalc();
+    });
+
+    document.querySelectorAll('input[name="rent_duration_units[]"]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const checked = getAcceptedRentUnits();
+        if (!checked.length) {
+          checkbox.checked = true;
+          alert('Select at least one accepted rent duration.');
+          return;
+        }
+
+        // Keep the main price duration unit accepted.
+        if (
+          durationSelect.value === checkbox.value &&
+          !checkbox.checked
+        ) {
+          checkbox.checked = true;
+          alert(`"${durationSelect.value}" must stay checked because it is your main price duration.`);
+          return;
+        }
+
+        syncAcceptedRentUnitPrices({
+          // Recalculate when turning a unit back on; keep zeros when turning off.
+          recalcValues: checkbox.checked,
+        });
+      });
+    });
+
+    // Initial sync on page load
+    syncAcceptedRentUnitPrices({ recalcValues: true });
+
     // Add visual feedback when user manually edits calculated prices
-    [perDay, perWeek, perMonth, perYear].forEach(input => {
-      input.addEventListener('focus', function() {
+    [perDay, perWeek, perMonth, perYear].forEach((input) => {
+      input.addEventListener('focus', function () {
         this.style.background = '#ffffff';
       });
-      
-      input.addEventListener('blur', function() {
+
+      input.addEventListener('blur', function () {
         if (!this.value) {
           this.style.background = '#eff6ff';
         }

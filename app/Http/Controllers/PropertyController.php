@@ -288,22 +288,7 @@ class PropertyController extends Controller
                 $validated['rent_duration_units'] = null;
             }
 
-            if (($validated['listing_type'] ?? null) === 'rent') {
-                $days = ['day' => 1, 'week' => 7, 'month' => 30, 'year' => 365];
-                $baseUnit = $validated['price_duration'] ?? 'month';
-                $basePrice = (float) ($validated['price'] ?? 0);
-                $divisor = $days[$baseUnit] ?? 30;
-                $perDay = $divisor > 0 ? ($basePrice / $divisor) : 0;
-                $validated['price_per_day'] = round($perDay, 2);
-                $validated['price_per_week'] = round($perDay * 7, 2);
-                $validated['price_per_month'] = round($perDay * 30, 2);
-                $validated['price_per_year'] = round($perDay * 365, 2);
-            } else {
-                $validated['price_per_day'] = null;
-                $validated['price_per_week'] = null;
-                $validated['price_per_month'] = null;
-                $validated['price_per_year'] = null;
-            }
+            $validated = $this->applyRentPricingFields($validated);
 
             if (isset($validated['latitude']) && isset($validated['longitude']) 
                 && !empty($validated['latitude']) && !empty($validated['longitude'])) {
@@ -507,23 +492,8 @@ class PropertyController extends Controller
                 $validated['rent_duration_units'] = null;
             }
 
-            // Calculate and store prices per duration unit (server-side source of truth)
-            if (($validated['listing_type'] ?? null) === 'rent') {
-                $days = ['day' => 1, 'week' => 7, 'month' => 30, 'year' => 365];
-                $baseUnit = $validated['price_duration'] ?? 'month';
-                $basePrice = (float) ($validated['price'] ?? 0);
-                $divisor = $days[$baseUnit] ?? 30;
-                $perDay = $divisor > 0 ? ($basePrice / $divisor) : 0;
-                $validated['price_per_day'] = round($perDay, 2);
-                $validated['price_per_week'] = round($perDay * 7, 2);
-                $validated['price_per_month'] = round($perDay * 30, 2);
-                $validated['price_per_year'] = round($perDay * 365, 2);
-            } else {
-                $validated['price_per_day'] = null;
-                $validated['price_per_week'] = null;
-                $validated['price_per_month'] = null;
-                $validated['price_per_year'] = null;
-            }
+            // Calculate and store prices only for accepted duration units
+            $validated = $this->applyRentPricingFields($validated);
             $amenityIds = (array)($request->input('amenities', []));
             $ruleIds    = (array)($request->input('rules', []));
 
@@ -675,6 +645,70 @@ class PropertyController extends Controller
     /**
      * Check if property address has changed and needs geocoding
      */
+    /**
+     * Fill price_per_* from the base price, but only for accepted rent_duration_units.
+     * Unaccepted units are stored as 0 so renters cannot use them.
+     */
+    private function applyRentPricingFields(array $validated): array
+    {
+        if (($validated['listing_type'] ?? null) !== 'rent') {
+            $validated['price_per_day'] = null;
+            $validated['price_per_week'] = null;
+            $validated['price_per_month'] = null;
+            $validated['price_per_year'] = null;
+
+            return $validated;
+        }
+
+        $dayFactors = ['day' => 1, 'week' => 7, 'month' => 30, 'year' => 365];
+        $baseUnit = $validated['price_duration'] ?? 'month';
+        $basePrice = (float) ($validated['price'] ?? 0);
+        $divisor = $dayFactors[$baseUnit] ?? 30;
+        $perDay = $divisor > 0 ? ($basePrice / $divisor) : 0;
+
+        $acceptedRaw = $validated['rent_duration_units'] ?? '';
+        if (is_array($acceptedRaw)) {
+            $accepted = $acceptedRaw;
+        } else {
+            $accepted = array_filter(array_map('trim', explode(',', (string) $acceptedRaw)));
+        }
+        $accepted = array_values(array_intersect(['day', 'week', 'month', 'year'], $accepted));
+
+        // Main price duration must always remain accepted.
+        if ($baseUnit && !in_array($baseUnit, $accepted, true)) {
+            $accepted[] = $baseUnit;
+        }
+        if ($accepted === []) {
+            $accepted = [$baseUnit ?: 'month'];
+        }
+
+        $computed = [
+            'day' => round($perDay, 2),
+            'week' => round($perDay * 7, 2),
+            'month' => round($perDay * 30, 2),
+            'year' => round($perDay * 365, 2),
+        ];
+
+        foreach (['day', 'week', 'month', 'year'] as $unit) {
+            $key = 'price_per_' . $unit;
+            if (!in_array($unit, $accepted, true)) {
+                $validated[$key] = 0;
+                continue;
+            }
+
+            // Prefer an explicitly submitted positive/zero value for accepted units when present.
+            if (array_key_exists($key, $validated) && $validated[$key] !== null && $validated[$key] !== '') {
+                $validated[$key] = round((float) $validated[$key], 2);
+            } else {
+                $validated[$key] = $computed[$unit];
+            }
+        }
+
+        $validated['rent_duration_units'] = implode(',', $accepted);
+
+        return $validated;
+    }
+
     private function shouldGeocode(Property $property, array $validated): bool
     {
         $locationFields = ['address', 'city', 'country'];

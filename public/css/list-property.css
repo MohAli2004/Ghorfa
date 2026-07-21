@@ -1092,7 +1092,8 @@
 
   .rent-only-fields.is-hidden,
   .rent-only-block.is-hidden,
-  .rent-only-label.is-hidden {
+  .rent-only-label.is-hidden,
+  .price-breakdown-item.is-hidden {
     display: none !important;
   }
 

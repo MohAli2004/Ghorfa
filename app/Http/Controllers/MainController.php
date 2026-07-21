@@ -114,6 +114,8 @@ class MainController extends Controller
      */
     function profileTransactions()
     {
+        app(\App\Services\TransactionWorkflowService::class)->cancelExpiredPendingTransactions();
+
         $transactions = Transaction::where('user_id', auth()->id())
             ->with('property')
             ->orderByDesc('created_at')

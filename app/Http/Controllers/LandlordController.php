@@ -28,6 +28,8 @@ class LandlordController extends Controller
 
     public function dashboard()
     {
+        app(\App\Services\TransactionWorkflowService::class)->cancelExpiredPendingTransactions();
+
         $user = Auth::user();
         $propertyIds = Property::where('user_id', $user->id)->pluck('id');
 

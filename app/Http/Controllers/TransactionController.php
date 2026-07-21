@@ -85,6 +85,12 @@ class TransactionController extends Controller
      */
     public function show(Transaction $transaction)
     {
+        // Keep status fresh even if the scheduler has not run yet.
+        if ($transaction->isPending() && $transaction->type === 'rent') {
+            $this->workflowService->cancelExpiredPendingTransaction($transaction);
+            $transaction->refresh();
+        }
+
         $transaction->load([
             'user',
             'property.amenities',

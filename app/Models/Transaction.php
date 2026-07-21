@@ -371,6 +371,25 @@ class Transaction extends Model
     }
 
     /**
+     * Auto-cancel a pending rental after its start date has passed.
+     */
+    public function cancelExpiredPending(string $reason = null): bool
+    {
+        if (!$this->isPending() || $this->type !== 'rent' || !$this->start_date) {
+            return false;
+        }
+
+        if ($this->start_date->copy()->startOfDay()->gt(now()->startOfDay())) {
+            return false;
+        }
+
+        return $this->update([
+            'status' => 'cancelled_by_seller',
+            'cancel_reason' => $reason ?: 'Automatically cancelled: rental start date passed while the request was still pending.',
+        ]);
+    }
+
+    /**
      * Transition: Seller requests refund (after payment)
      */
     public function requestRefund(string $reason = null): bool

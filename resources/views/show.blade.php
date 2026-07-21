@@ -421,12 +421,14 @@
                 </button>
 
                 @auth
-                    @if(auth()->user()->role === 'admin' || auth()->id() === $property->user_id)
+                    @if(auth()->id() === $property->user_id || auth()->user()->role === 'admin')
                     <div class="property-actions-bar__owner">
+                        @if(auth()->id() === $property->user_id)
                         <a href="{{ route('properties.edit', $property) }}" class="property-action-btn property-action-btn--edit edit-btn">
                             <i class="fas fa-edit" aria-hidden="true"></i>
                             <span>Edit Property</span>
                         </a>
+                        @endif
                         <form class="property-actions-delete-form delete-form" action="{{ route('properties.destroy', $property->id) }}" method="POST">
                             @csrf
                             @method('DELETE')

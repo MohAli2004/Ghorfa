@@ -449,6 +449,60 @@ class TransactionWorkflowService
     }
 
     /**
+     * Auto-cancel one pending rental if its start date has already begun/passed.
+     */
+    public function cancelExpiredPendingTransaction(Transaction $transaction): bool
+    {
+        $reason = 'Automatically cancelled: rental start date passed while the request was still pending.';
+
+        if (!$transaction->cancelExpiredPending($reason)) {
+            return false;
+        }
+
+        $propertyTitle = $transaction->property?->title
+            ?? $transaction->loadMissing('property')->property?->title
+            ?? 'a property';
+
+        $this->notifyBuyer(
+            $transaction,
+            'transaction',
+            'Rental request expired',
+            'Your rental request for "' . $propertyTitle . '" was automatically cancelled because the start date passed while it was still pending.'
+        );
+
+        $this->notifyLandlord(
+            $transaction,
+            'transaction',
+            'Rental request expired',
+            'A rental request for "' . $propertyTitle . '" was automatically cancelled because the start date passed while it was still pending.'
+        );
+
+        return true;
+    }
+
+    /**
+     * Auto-cancel pending rentals whose start date has already begun/passed.
+     *
+     * @return int Number of transactions cancelled
+     */
+    public function cancelExpiredPendingTransactions(): int
+    {
+        $cancelled = 0;
+
+        Transaction::eligibleForExpiredPendingCancel()
+            ->with(['user', 'property.user'])
+            ->chunkById(100, function ($transactions) use (&$cancelled) {
+                foreach ($transactions as $transaction) {
+                    if ($this->cancelExpiredPendingTransaction($transaction)) {
+                        $cancelled++;
+                    }
+                }
+            });
+
+        return $cancelled;
+    }
+
+    /**
      * Get the current transaction workflow state as a descriptive string
      */
     public function getWorkflowState(Transaction $transaction): string

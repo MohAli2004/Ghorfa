@@ -148,8 +148,10 @@
                         <ul class="setting-list">
                             <li><a href="{{route('properties.show', $property->id) }}">View</a></li>
                             @if(auth()->check())
-                                @if(auth()->user()->role === 'admin' || auth()->id() === $property->user_id)
+                                @if(auth()->id() === $property->user_id)
                                     <li><a href="{{ route('properties.edit', $property->id) }}">Edit</a></li>
+                                @endif
+                                @if(auth()->user()->role === 'admin' || auth()->id() === $property->user_id)
                                     <li>
                                         <form action="{{ route('properties.destroy', $property->id) }}" method="POST" class="form-inline">
                                             @csrf

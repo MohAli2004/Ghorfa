@@ -218,4 +218,17 @@ trait TransactionScopes
             ->where('end_date', '<', $today)
             ->whereNull('refund_requested_at');
     }
+
+    /**
+     * Pending rentals whose start date has already begun/passed (eligible for auto-cancel).
+     */
+    public function scopeEligibleForExpiredPendingCancel(Builder $query): Builder
+    {
+        $today = now()->toDateString();
+
+        return $query->where('type', 'rent')
+            ->where('status', 'pending')
+            ->whereNotNull('start_date')
+            ->whereDate('start_date', '<=', $today);
+    }
 }

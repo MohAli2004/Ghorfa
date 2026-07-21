@@ -215,7 +215,8 @@ class PropertyController extends Controller
      */
     public function edit(Property $property)
     {
-        if (Auth::check() && (Auth::user()->role === 'admin' || $property->user_id === Auth::id())) {
+        // Only the property owner can edit (admins may delete, not edit others' listings).
+        if (Auth::check() && $property->user_id === Auth::id()) {
             $amenities = Amenity::all();
             $rules = Rule::all();
             $units = Unit::all();
@@ -234,7 +235,7 @@ class PropertyController extends Controller
      */
     public function update(Request $request, Property $property)
     {
-        if (!(Auth::check() && (Auth::user()->role === 'admin' || $property->user_id === Auth::id()))) {
+        if (!(Auth::check() && $property->user_id === Auth::id())) {
             return redirect()->route('properties.show', $property)
                 ->with('error', 'You are not authorized to edit this property!');
         }

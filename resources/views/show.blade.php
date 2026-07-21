@@ -97,6 +97,18 @@
                         $owner = $property->landlord;
                         $ownerInitial = $owner ? mb_strtoupper(mb_substr($owner->name, 0, 1)) : '?';
                         $ownerPhone = $owner?->phone_nb;
+                        $whatsappPhone = $ownerPhone ? preg_replace('/\D+/', '', $ownerPhone) : null;
+                        $propertyUrl = route('properties.show', $property);
+                        $whatsappMessage = sprintf(
+                            "Hi! I'm interested in \"%s\" in %s (Property #%d) on Ghorfa. Is it still available?\n\n%s",
+                            $property->title,
+                            $property->city,
+                            $property->id,
+                            $propertyUrl
+                        );
+                        $whatsappUrl = $whatsappPhone
+                            ? 'https://wa.me/' . $whatsappPhone . '?text=' . rawurlencode($whatsappMessage)
+                            : null;
                     @endphp
                     <div class="contact-card">
                         <div class="contact-header">
@@ -116,7 +128,7 @@
                             <a href="tel:{{ preg_replace('/\s+/', '', $ownerPhone) }}" class="contact-btn contact-btn--call" data-track-contact="call" data-property-id="{{ $property->id }}">
                                 Call
                             </a>
-                            <a href="https://wa.me/{{ preg_replace('/\D+/', '', $ownerPhone) }}" class="contact-btn contact-btn--whatsapp" target="_blank" rel="noopener noreferrer" data-track-contact="whatsapp" data-property-id="{{ $property->id }}">
+                            <a href="{{ $whatsappUrl }}" class="contact-btn contact-btn--whatsapp" target="_blank" rel="noopener noreferrer" data-track-contact="whatsapp" data-property-id="{{ $property->id }}">
                                 WhatsApp
                             </a>
                             @else
@@ -629,6 +641,9 @@ function initPropertyShowMap() {
                     rulesExceptionsInput.setAttribute('required', 'required');
                 }
             }
+            if (typeof updateRentalPriceEstimate === 'function') {
+                updateRentalPriceEstimate();
+            }
         @else
             window.location.href = '{{ route("login") }}';
         @endauth
@@ -643,7 +658,9 @@ function initPropertyShowMap() {
                 if (endInput.value && endInput.value < this.value) {
                     endInput.value = this.value;
                 }
+                updateRentalPriceEstimate();
             });
+            endInput.addEventListener('change', updateRentalPriceEstimate);
         }
         var rulesAccepted = document.getElementById('rules_accepted');
         var rulesExceptionsGroup = document.getElementById('rules_exceptions_group');
@@ -663,7 +680,98 @@ function initPropertyShowMap() {
             rulesAccepted.addEventListener('change', toggleRulesExceptions);
             toggleRulesExceptions();
         }
+        updateRentalPriceEstimate();
     });
+
+    function rentalUnitsFromPrimary(primary) {
+        if (primary === 'day') return ['day'];
+        if (primary === 'week') return ['week', 'day'];
+        if (primary === 'month') return ['month', 'week', 'day'];
+        return ['year', 'month', 'week', 'day'];
+    }
+
+    function addCalendarUnit(date, unit) {
+        var next = new Date(date.getTime());
+        if (unit === 'year') next.setFullYear(next.getFullYear() + 1);
+        else if (unit === 'month') next.setMonth(next.getMonth() + 1);
+        else if (unit === 'week') next.setDate(next.getDate() + 7);
+        else next.setDate(next.getDate() + 1);
+        return next;
+    }
+
+    function decomposeRentalStay(start, end, allowed) {
+        var counts = { year: 0, month: 0, week: 0, day: 0 };
+        var cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        var endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+        ['year', 'month', 'week'].forEach(function(unit) {
+            if (allowed.indexOf(unit) === -1) return;
+            while (true) {
+                var next = addCalendarUnit(cursor, unit);
+                if (next > endDay) break;
+                cursor = next;
+                counts[unit] += 1;
+            }
+        });
+        if (allowed.indexOf('day') !== -1) {
+            counts.day = Math.max(0, Math.round((endDay - cursor) / 86400000));
+        }
+        if (counts.year + counts.month + counts.week + counts.day === 0) {
+            counts.day = Math.max(0, Math.round((endDay - start) / 86400000));
+        }
+        return counts;
+    }
+
+    function formatMoney(amount) {
+        return '$' + Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateRentalPriceEstimate() {
+        var box = document.getElementById('rentalPriceEstimate');
+        var startInput = document.getElementById('start_date');
+        var endInput = document.getElementById('end_date');
+        var totalEl = document.getElementById('rentalPriceTotal');
+        var periodEl = document.getElementById('rentalPricePeriod');
+        var linesEl = document.getElementById('rentalPriceLines');
+        if (!box || !startInput || !endInput || !totalEl || !periodEl || !linesEl) return;
+
+        if (!startInput.value || !endInput.value || endInput.value <= startInput.value) {
+            box.hidden = true;
+            return;
+        }
+
+        var start = new Date(startInput.value + 'T00:00:00');
+        var end = new Date(endInput.value + 'T00:00:00');
+        var primary = box.getAttribute('data-primary-unit') || 'month';
+        var rates = {
+            day: parseFloat(box.getAttribute('data-rate-day') || '0'),
+            week: parseFloat(box.getAttribute('data-rate-week') || '0'),
+            month: parseFloat(box.getAttribute('data-rate-month') || '0'),
+            year: parseFloat(box.getAttribute('data-rate-year') || '0')
+        };
+        var counts = decomposeRentalStay(start, end, rentalUnitsFromPrimary(primary));
+        var nights = Math.round((end - start) / 86400000);
+        var total = 0;
+        var lines = [];
+        var periodParts = [];
+
+        ['year', 'month', 'week', 'day'].forEach(function(unit) {
+            var count = counts[unit] || 0;
+            if (count <= 0) return;
+            var rate = rates[unit] || 0;
+            var subtotal = Math.round(count * rate * 100) / 100;
+            total += subtotal;
+            var label = unit + (count === 1 ? '' : 's');
+            periodParts.push(count + ' ' + label);
+            lines.push(
+                '<li><span>' + count + ' ' + label + ' × ' + formatMoney(rate) + '</span><strong>' + formatMoney(subtotal) + '</strong></li>'
+            );
+        });
+
+        totalEl.textContent = formatMoney(Math.round(total * 100) / 100);
+        periodEl.textContent = nights + ' night' + (nights === 1 ? '' : 's') + ' · ' + (periodParts.join(' + ') || '0 days');
+        linesEl.innerHTML = lines.join('');
+        box.hidden = false;
+    }
 
     function closeRentalRequestModal() {
         document.getElementById('rentalRequestModal').style.display = 'none';
@@ -813,6 +921,27 @@ function initPropertyShowMap() {
                             min="{{ $property->getMinRentalStartDate() }}">
                         <span class="trxn-field__hint">Both dates define your rental period.</span>
                     </div>
+                </div>
+
+                @php
+                    $rentalRates = app(\App\Services\RentalPriceCalculator::class)->ratesFor($property);
+                    $rentalPrimaryUnit = $property->price_duration ?? 'month';
+                @endphp
+                <div class="trxn-price-estimate" id="rentalPriceEstimate" hidden
+                    data-primary-unit="{{ $rentalPrimaryUnit }}"
+                    data-rate-day="{{ $rentalRates['day'] }}"
+                    data-rate-week="{{ $rentalRates['week'] }}"
+                    data-rate-month="{{ $rentalRates['month'] }}"
+                    data-rate-year="{{ $rentalRates['year'] }}">
+                    <div class="trxn-price-estimate__head">
+                        <span class="trxn-price-estimate__title">
+                            <i class="fas fa-calculator" aria-hidden="true"></i>
+                            Estimated total
+                        </span>
+                        <strong class="trxn-price-estimate__total" id="rentalPriceTotal">$0.00</strong>
+                    </div>
+                    <p class="trxn-price-estimate__period" id="rentalPricePeriod"></p>
+                    <ul class="trxn-price-estimate__lines" id="rentalPriceLines"></ul>
                 </div>
 
                 <div class="trxn-field">

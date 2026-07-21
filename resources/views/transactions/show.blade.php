@@ -173,6 +173,35 @@
                                         <label><i class="fas fa-calendar-times"></i> Check-out</label>
                                         <span>{{ $transaction->end_date ? $transaction->end_date->format('M j, Y') : 'N/A' }}</span>
                                     </div>
+                                    @php $breakdown = $transaction->price_breakdown ?? []; @endphp
+                                    @if(!empty($breakdown['label']))
+                                        <div class="request-detail-item">
+                                            <label><i class="fas fa-clock"></i> Stay period</label>
+                                            <span>
+                                                {{ $breakdown['label'] }}
+                                                @if(!empty($breakdown['nights']))
+                                                    ({{ $breakdown['nights'] }} night{{ $breakdown['nights'] == 1 ? '' : 's' }})
+                                                @endif
+                                            </span>
+                                        </div>
+                                    @endif
+                                    @if(!empty($breakdown['units']))
+                                        <div class="request-detail-item request-detail-item--full">
+                                            <label><i class="fas fa-calculator"></i> Price breakdown</label>
+                                            <ul class="request-detail-list">
+                                                @foreach(['year', 'month', 'week', 'day'] as $unit)
+                                                    @php $row = $breakdown['units'][$unit] ?? null; @endphp
+                                                    @if($row && (int) ($row['count'] ?? 0) > 0)
+                                                        <li>
+                                                            {{ (int) $row['count'] }} {{ $unit }}{{ (int) $row['count'] === 1 ? '' : 's' }}
+                                                            × ${{ number_format((float) ($row['rate'] ?? 0), 2) }}
+                                                            = ${{ number_format((float) ($row['subtotal'] ?? 0), 2) }}
+                                                        </li>
+                                                    @endif
+                                                @endforeach
+                                            </ul>
+                                        </div>
+                                    @endif
                                     <div class="request-detail-item">
                                         <label><i class="fas fa-check-double"></i> Rules accepted</label>
                                         <span class="request-detail-rules-accepted {{ $transaction->rules_accepted ? 'request-detail-rules-accepted--yes' : 'request-detail-rules-accepted--no' }}">

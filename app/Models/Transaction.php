@@ -16,6 +16,7 @@ class Transaction extends Model
         'property_id',
         'type',
         'price',
+        'price_breakdown',
         'currency',
         'status',
         'paid',
@@ -36,6 +37,7 @@ class Transaction extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'price_breakdown' => 'array',
         'currency' => 'string',
         'paid' => 'boolean',
         'start_date' => 'date',

@@ -77,6 +77,46 @@
                 <span>{{ $transaction->end_date ? \Carbon\Carbon::parse($transaction->end_date)->format('M j, Y') : 'N/A' }}</span>
             </td>
         </tr>
+        <tr>
+            <td class="request-detail-item">
+                <label>@unless($forPdf)<i class="fas fa-dollar-sign"></i>@endunless Calculated total</label>
+                <span><strong>${{ number_format((float) $transaction->price, 2) }}</strong> {{ $transaction->currency ?? 'USD' }}</span>
+            </td>
+            <td class="request-detail-item">
+                <label>@unless($forPdf)<i class="fas fa-clock"></i>@endunless Stay period</label>
+                <span>
+                    @php
+                        $breakdown = $transaction->price_breakdown ?? [];
+                        $stayLabel = $breakdown['label'] ?? null;
+                        $nights = $breakdown['nights'] ?? null;
+                    @endphp
+                    @if($stayLabel)
+                        {{ $stayLabel }}@if($nights) ({{ $nights }} night{{ $nights == 1 ? '' : 's' }})@endif
+                    @else
+                        —
+                    @endif
+                </span>
+            </td>
+        </tr>
+        @if(!empty($breakdown['units']))
+        <tr>
+            <td class="request-detail-item request-detail-item--full" colspan="2">
+                <label>@unless($forPdf)<i class="fas fa-calculator"></i>@endunless Price breakdown</label>
+                <ul class="request-detail-list">
+                    @foreach(['year', 'month', 'week', 'day'] as $unit)
+                        @php $row = $breakdown['units'][$unit] ?? null; @endphp
+                        @if($row && (int) ($row['count'] ?? 0) > 0)
+                            <li>
+                                {{ (int) $row['count'] }} {{ $unit }}{{ (int) $row['count'] === 1 ? '' : 's' }}
+                                × ${{ number_format((float) ($row['rate'] ?? 0), 2) }}
+                                = ${{ number_format((float) ($row['subtotal'] ?? 0), 2) }}
+                            </li>
+                        @endif
+                    @endforeach
+                </ul>
+            </td>
+        </tr>
+        @endif
         @endif
         @if($transaction->rules_exceptions && trim($transaction->rules_exceptions))
         <tr>
@@ -120,7 +160,7 @@
                 <span>{{ $property->property_type }}</span>
             </td>
             <td class="request-detail-item">
-                <label>@unless($forPdf)<i class="fas fa-dollar-sign"></i>@endunless Price</label>
+                <label>@unless($forPdf)<i class="fas fa-dollar-sign"></i>@endunless Listed rate</label>
                 <span>
                     ${{ number_format($property->price) }}
                     @if(($property->listing_type ?? null) === 'rent')

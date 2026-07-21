@@ -13,6 +13,10 @@ class TransactionWorkflowService
 {
     use CreatesNotifications;
 
+    public function __construct(
+        protected RentalPriceCalculator $rentalPriceCalculator,
+    ) {}
+
     /**
      * Validate if a property is available for rental during specified dates
      */
@@ -63,11 +67,20 @@ class TransactionWorkflowService
             ]);
         }
 
+        try {
+            $pricing = $this->rentalPriceCalculator->calculate($property, $startDate, $endDate);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withMessages([
+                'dates' => $e->getMessage(),
+            ]);
+        }
+
         $transaction = Transaction::create([
             'user_id' => $userId,
             'property_id' => $propertyId,
             'type' => 'rent',
-            'price' => $property->price,
+            'price' => $pricing['total'],
+            'price_breakdown' => $pricing,
             'currency' => 'USD', // Default, adjust as needed
             'status' => 'pending',
             'start_date' => $startDate,

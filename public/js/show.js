@@ -155,19 +155,17 @@ document.addEventListener('keydown', function(event) {
     }
 });
 
-// Contact button functionality
+// Legacy primary/secondary contact buttons only (not Call/WhatsApp links)
 function initContactButtons() {
-    const contactBtns = document.querySelectorAll('.contact-btn');
+    const contactBtns = document.querySelectorAll('.contact-btn.primary, .contact-btn.secondary');
     
     contactBtns.forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             
             if (this.classList.contains('primary')) {
-                // Call Now functionality
                 showContactModal('call');
             } else if (this.classList.contains('secondary')) {
-                // Send Message functionality
                 showContactModal('message');
             }
         });
